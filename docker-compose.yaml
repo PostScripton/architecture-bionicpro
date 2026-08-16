@@ -12,7 +12,9 @@ services:
     ports:
       - "5433:5432"
   keycloak:
-    image: quay.io/keycloak/keycloak:21.1
+    build:
+      context: ./keycloak
+      dockerfile: Dockerfile
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
@@ -20,15 +22,20 @@ services:
       KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
       KC_DB_PASSWORD: keycloak_password
-    command: 
+      KC_VAULT: file
+      KC_VAULT_DIR: /opt/keycloak/vault
+    command:
       - start-dev
       - --import-realm
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+      - ./keycloak/vault:/opt/keycloak/vault:ro
     ports:
       - "8080:8080"
     depends_on:
       - keycloak_db
+      - ldap
+
   frontend:
     build:
       context: ./frontend
@@ -37,6 +44,37 @@ services:
       - "3000:3000"
     environment:
       REACT_APP_API_URL: http://localhost:8000
-      REACT_APP_KEYCLOAK_URL: http://localhost:8080
-      REACT_APP_KEYCLOAK_REALM: reports-realm
-      REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+    depends_on:
+      - bionicpro-auth
+
+  ldap:
+    build:
+      context: ./ldap
+      dockerfile: Dockerfile
+    environment:
+      LDAP_ORGANISATION: BionicPRO Foreign Office
+      LDAP_DOMAIN: example.com
+      LDAP_ADMIN_PASSWORD: admin
+    ports:
+      - "389:389"
+
+  bionicpro-auth:
+    build:
+      context: ./bionicpro-auth
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      LISTEN_ADDR: ":8000"
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      KEYCLOAK_REALM: reports-realm
+      KEYCLOAK_CLIENT_ID: reports-frontend
+      BACKEND_PUBLIC_URL: http://localhost:8000
+      FRONTEND_URL: http://localhost:3000
+      REPORTS_API_URL: ""
+      COOKIE_NAME: bionicpro_session
+      COOKIE_SECURE: "false"
+      SESSION_TTL_SECONDS: "900"
+    depends_on:
+      - keycloak
