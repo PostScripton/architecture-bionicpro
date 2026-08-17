@@ -21,6 +21,15 @@ CLICKHOUSE_USER = _env("CLICKHOUSE_USER", "default")
 CLICKHOUSE_PASSWORD = _env("CLICKHOUSE_PASSWORD", "")
 CLICKHOUSE_DB = _env("CLICKHOUSE_DB", "reports")
 
+# S3-совместимое хранилище (Minio) - готовые отчёты сохраняются сюда, чтобы
+# не пересчитывать их из ClickHouse при каждом запросе.
+S3_ENDPOINT_URL = _env("S3_ENDPOINT_URL", "http://minio:9000")
+S3_ACCESS_KEY = _env("S3_ACCESS_KEY", "minioadmin")
+S3_SECRET_KEY = _env("S3_SECRET_KEY", "minioadmin")
+S3_BUCKET = _env("S3_BUCKET", "reports")
+# Публичный адрес Nginx, который кеширует и раздаёт объекты бакета как CDN.
+CDN_BASE_URL = _env("CDN_BASE_URL", "http://localhost:8082")
+
 LISTEN_PORT = int(_env("LISTEN_PORT", "8001"))
 
 ISSUER = f"{KEYCLOAK_PUBLIC_URL.rstrip('/')}/realms/{KEYCLOAK_REALM}"

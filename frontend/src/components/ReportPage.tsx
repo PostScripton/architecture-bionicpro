@@ -5,6 +5,7 @@ const API_URL = process.env.REACT_APP_API_URL || '';
 interface Report {
   status: 'ready' | 'pending';
   message?: string;
+  report_url?: string;
   username?: string;
   report_date?: string;
   full_name?: string;
@@ -82,6 +83,20 @@ const ReportPage: React.FC = () => {
       }
 
       const data: Report = await response.json();
+
+      // reports-api больше не отдаёт содержимое отчёта напрямую - только
+      // ссылку на CDN (Nginx перед S3/Minio), которая кеширует статический
+      // JSON и раздаёт его без повторной нагрузки на reports-api и OLAP.
+      if (data.status === 'ready' && data.report_url) {
+        const reportResponse = await fetch(data.report_url);
+        if (!reportResponse.ok) {
+          throw new Error(`Failed to fetch report from CDN: ${reportResponse.status}`);
+        }
+        const reportBody: Report = await reportResponse.json();
+        setReport(reportBody);
+        return;
+      }
+
       setReport(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

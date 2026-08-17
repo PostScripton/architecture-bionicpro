@@ -132,11 +132,54 @@ services:
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: ""
       CLICKHOUSE_DB: reports
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: reports
+      CDN_BASE_URL: http://localhost:8082
     ports:
       - "8001:8001"
     depends_on:
       - keycloak
       - clickhouse
+      - minio-init
+
+  minio:
+    image: minio/minio:RELEASE.2024-07-16T23-46-41Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - ./minio-data:/data
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+
+  # Разовый init-контейнер: создаёт бакет reports и открывает в нём
+  # анонимное чтение объектов - иначе Nginx-CDN не смог бы отдавать файлы
+  # без подписи каждого запроса, как это делает reports-api.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done
+        mc mb -p local/reports
+        mc anonymous set download local/reports
+
+  nginx-cdn:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8082:80"
+    depends_on:
+      - minio-init
 
   airflow_db:
     image: postgres:14
