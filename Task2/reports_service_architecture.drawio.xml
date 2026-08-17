@@ -32,23 +32,23 @@
         </mxCell>
 
         <!-- ClickHouse mart -->
-        <mxCell id="clickhouse" value="user_report_mart&#10;[Container: ClickHouse OLAP]&#10;Готовая витрина отчётности,&#10;только чтение по SELECT" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#23A2D9;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#0E7DAD;" vertex="1" parent="1">
+        <mxCell id="clickhouse" value="user_report_mart_v2&#10;[Container: ClickHouse OLAP]&#10;Готовая витрина отчётности,&#10;только чтение по SELECT" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#23A2D9;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#0E7DAD;" vertex="1" parent="1">
           <mxGeometry x="340" y="660" width="240" height="120" as="geometry" />
         </mxCell>
 
         <!-- Airflow -->
-        <mxCell id="airflow" value="Airflow ETL&#10;[Container: Python DAG]&#10;crm_telemetry_reports_etl,&#10;расписание 03:00 ежедневно" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="airflow" value="Airflow ETL&#10;[Container: Python DAG]&#10;crm_telemetry_reports_etl,&#10;только телеметрия,&#10;расписание 03:00 ежедневно" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="660" y="660" width="240" height="120" as="geometry" />
         </mxCell>
 
         <!-- CRM DB -->
-        <mxCell id="crmdb" value="CRM DB&#10;[Container: PostgreSQL]&#10;customers: username,&#10;prosthetic_model, region" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#6C6477;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#4D4D4D;" vertex="1" parent="1">
-          <mxGeometry x="1000" y="580" width="220" height="110" as="geometry" />
+        <mxCell id="crmdb" value="CRM DB&#10;[Container: PostgreSQL]&#10;customers: username,&#10;prosthetic_model, region&#10;&#10;Данные в витрину поступают&#10;через CDC-пайплайн (Debezium&#10;+ Kafka + KafkaEngine), см.&#10;Task4/crm_cdc_pipeline.drawio.xml.&#10;Airflow этот источник не читает." style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#6C6477;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#4D4D4D;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="560" width="240" height="170" as="geometry" />
         </mxCell>
 
         <!-- Telemetry DB -->
         <mxCell id="telemetrydb" value="Telemetry DB&#10;[Container: PostgreSQL]&#10;device_events: сигналы&#10;и метрики протезов" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#6C6477;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#4D4D4D;" vertex="1" parent="1">
-          <mxGeometry x="1000" y="740" width="220" height="110" as="geometry" />
+          <mxGeometry x="1000" y="760" width="220" height="110" as="geometry" />
         </mxCell>
 
         <!-- Edges -->
@@ -72,11 +72,11 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <mxCell id="e6" value="SELECT ... WHERE username&#10;= из токена" style="html=1;fontSize=10;endArrow=block;strokeColor=#0E7DAD;fontColor=#0E7DAD;" edge="1" parent="1" source="reportsapi" target="clickhouse">
+        <mxCell id="e6" value="SELECT ... FINAL WHERE&#10;username = из токена" style="html=1;fontSize=10;endArrow=block;strokeColor=#0E7DAD;fontColor=#0E7DAD;" edge="1" parent="1" source="reportsapi" target="clickhouse">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <mxCell id="e7" value="extract customers" style="html=1;fontSize=10;endArrow=block;strokeColor=#4D4D4D;fontColor=#4D4D4D;" edge="1" parent="1" source="airflow" target="crmdb">
+        <mxCell id="e7" value="CDC (Debezium + Kafka),&#10;без обращения Airflow -&#10;см. Задание 4" style="html=1;fontSize=10;endArrow=block;dashed=1;strokeColor=#4D4D4D;fontColor=#4D4D4D;" edge="1" parent="1" source="crmdb" target="clickhouse">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
@@ -84,7 +84,7 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <mxCell id="e9" value="INSERT витрины" style="html=1;fontSize=10;endArrow=block;strokeColor=#0E7DAD;fontColor=#0E7DAD;" edge="1" parent="1" source="airflow" target="clickhouse">
+        <mxCell id="e9" value="INSERT агрегатов&#10;телеметрии" style="html=1;fontSize=10;endArrow=block;strokeColor=#0E7DAD;fontColor=#0E7DAD;" edge="1" parent="1" source="airflow" target="clickhouse">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
