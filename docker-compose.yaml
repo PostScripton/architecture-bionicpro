@@ -72,9 +72,135 @@ services:
       KEYCLOAK_CLIENT_ID: reports-frontend
       BACKEND_PUBLIC_URL: http://localhost:8000
       FRONTEND_URL: http://localhost:3000
-      REPORTS_API_URL: ""
+      REPORTS_API_URL: "http://reports-api:8001"
       COOKIE_NAME: bionicpro_session
       COOKIE_SECURE: "false"
       SESSION_TTL_SECONDS: "900"
     depends_on:
       - keycloak
+      - reports-api
+
+  crm_db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: crm
+      POSTGRES_USER: crm_user
+      POSTGRES_PASSWORD: crm_password
+    volumes:
+      - ./crm/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5434:5432"
+
+  telemetry_db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: telemetry
+      POSTGRES_USER: telemetry_user
+      POSTGRES_PASSWORD: telemetry_password
+    volumes:
+      - ./telemetry/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5435:5432"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+    volumes:
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  reports-api:
+    build:
+      context: ./reports-api
+      dockerfile: Dockerfile
+    environment:
+      LISTEN_PORT: "8001"
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_PUBLIC_URL: http://localhost:8080
+      KEYCLOAK_REALM: reports-realm
+      REQUIRED_AUDIENCE: reports-api
+      REQUIRED_ROLE: prothetic_user
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_HTTP_PORT: "8123"
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DB: reports
+    ports:
+      - "8001:8001"
+    depends_on:
+      - keycloak
+      - clickhouse
+
+  airflow_db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+
+  airflow-init:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    depends_on:
+      - airflow_db
+    environment: &airflow-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_db/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: "ZmDfcTF9X8VqNaTOpQ8HYCk8LiCzAJp0USKuYFrhOL0="
+      AIRFLOW__WEBSERVER__SECRET_KEY: "bionicpro-airflow-dev-secret"
+      CRM_DB_HOST: crm_db
+      CRM_DB_PORT: "5432"
+      CRM_DB_NAME: crm
+      CRM_DB_USER: crm_user
+      CRM_DB_PASSWORD: crm_password
+      TELEMETRY_DB_HOST: telemetry_db
+      TELEMETRY_DB_PORT: "5432"
+      TELEMETRY_DB_NAME: telemetry
+      TELEMETRY_DB_USER: telemetry_user
+      TELEMETRY_DB_PASSWORD: telemetry_password
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_HTTP_PORT: "8123"
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DB: reports
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create --username admin --password admin --firstname Admin --lastname Admin --role Admin --email admin@example.com || true
+
+  airflow-webserver:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    environment: *airflow-env
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+    ports:
+      - "8081:8080"
+    command: webserver
+    depends_on:
+      - airflow-init
+
+  airflow-scheduler:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    environment: *airflow-env
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+    command: scheduler
+    depends_on:
+      - airflow-init

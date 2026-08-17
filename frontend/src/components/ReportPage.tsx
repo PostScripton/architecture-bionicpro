@@ -2,11 +2,28 @@ import React, { useEffect, useState } from 'react';
 
 const API_URL = process.env.REACT_APP_API_URL || '';
 
+interface Report {
+  status: 'ready' | 'pending';
+  message?: string;
+  username?: string;
+  report_date?: string;
+  full_name?: string;
+  region?: string;
+  prosthetic_model?: string;
+  events_count?: number;
+  avg_response_time_ms?: number;
+  avg_signal_quality?: number;
+  avg_battery_level?: number;
+  error_count?: number;
+  updated_at?: string;
+}
+
 const ReportPage: React.FC = () => {
   const [checkingSession, setCheckingSession] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
 
   useEffect(() => {
     const checkSession = async () => {
@@ -44,6 +61,7 @@ const ReportPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      setReport(null);
 
       const response = await fetch(`${API_URL}/reports`, {
         credentials: 'include',
@@ -54,9 +72,17 @@ const ReportPage: React.FC = () => {
         return;
       }
 
-      if (!response.ok) {
+      if (response.status === 403) {
+        setError('У вас нет доступа к отчётам по протезам');
+        return;
+      }
+
+      if (!response.ok && response.status !== 202) {
         throw new Error(`Request failed with status ${response.status}`);
       }
+
+      const data: Report = await response.json();
+      setReport(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -106,6 +132,26 @@ const ReportPage: React.FC = () => {
         {error && (
           <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
             {error}
+          </div>
+        )}
+
+        {report && report.status === 'pending' && (
+          <div className="mt-4 p-4 bg-yellow-100 text-yellow-800 rounded">
+            Отчёт ещё не готов, попробуйте позже
+          </div>
+        )}
+
+        {report && report.status === 'ready' && (
+          <div className="mt-4 p-4 bg-gray-50 rounded border border-gray-200 text-left">
+            <p><strong>Пользователь:</strong> {report.full_name}</p>
+            <p><strong>Регион:</strong> {report.region}</p>
+            <p><strong>Модель протеза:</strong> {report.prosthetic_model}</p>
+            <p><strong>Отчёт за:</strong> {report.report_date}</p>
+            <p><strong>Событий:</strong> {report.events_count}</p>
+            <p><strong>Среднее время отклика:</strong> {report.avg_response_time_ms} мс</p>
+            <p><strong>Качество сигнала:</strong> {report.avg_signal_quality}%</p>
+            <p><strong>Заряд батареи:</strong> {report.avg_battery_level}%</p>
+            <p><strong>Ошибок:</strong> {report.error_count}</p>
           </div>
         )}
       </div>

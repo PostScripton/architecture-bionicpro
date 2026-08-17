@@ -3,3 +3,5 @@
 /keycloak/vault/*
 !/keycloak/vault/README.md
 2024__yandex-architecture-sso.code-workspace
+__pycache__/
+*.pyc
