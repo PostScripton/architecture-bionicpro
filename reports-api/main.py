@@ -83,7 +83,7 @@ def get_report(response: Response, principal: Principal = Depends(require_report
         SELECT report_date, full_name, region, prosthetic_model, events_count,
                avg_response_time_ms, avg_signal_quality, avg_battery_level,
                error_count, updated_at
-        FROM reports.user_report_mart FINAL
+        FROM reports.user_report_mart_v2 FINAL
         WHERE username = {username:String} AND report_date = {report_date:Date}
         LIMIT 1
         """,

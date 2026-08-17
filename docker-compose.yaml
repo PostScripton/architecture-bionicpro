@@ -82,6 +82,17 @@ services:
 
   crm_db:
     image: postgres:14
+    # wal_level=logical и слоты репликации нужны Debezium, чтобы читать
+    # изменения таблицы customers через логическую репликацию (CDC), не
+    # опрашивая CRM запросами - это и снимает нагрузку выгрузок с OLTP.
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=4
+      - -c
+      - max_wal_senders=4
     environment:
       POSTGRES_DB: crm
       POSTGRES_USER: crm_user
@@ -115,6 +126,67 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+    depends_on:
+      - kafka
+
+  kafka:
+    image: apache/kafka:3.7.0
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+
+  # Kafka Connect с предустановленным Debezium PostgreSQL connector -
+  # читает изменения таблицы customers из crm_db через логическую
+  # репликацию и публикует их в топик Kafka.
+  kafka-connect:
+    image: debezium/connect:2.7.3.Final
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: bionicpro-connect
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    ports:
+      - "8083:8083"
+    depends_on:
+      - kafka
+      - crm_db
+
+  # Разовый init-контейнер: регистрирует Debezium-коннектор для crm_db
+  # через REST API Kafka Connect после того, как воркер поднимется.
+  kafka-connect-init:
+    image: curlimages/curl:8.10.1
+    volumes:
+      - ./debezium:/debezium:ro
+    depends_on:
+      - kafka-connect
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        until curl -sf http://kafka-connect:8083/connectors > /dev/null; do sleep 2; done
+        if curl -sf http://kafka-connect:8083/connectors/crm-customers-connector > /dev/null 2>&1; then
+          echo "connector already registered"
+        else
+          curl -sf -X POST -H "Content-Type: application/json" \
+            --data @/debezium/connector-crm-customers.json \
+            http://kafka-connect:8083/connectors
+        fi
 
   reports-api:
     build:
@@ -200,11 +272,6 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__FERNET_KEY: "ZmDfcTF9X8VqNaTOpQ8HYCk8LiCzAJp0USKuYFrhOL0="
       AIRFLOW__WEBSERVER__SECRET_KEY: "bionicpro-airflow-dev-secret"
-      CRM_DB_HOST: crm_db
-      CRM_DB_PORT: "5432"
-      CRM_DB_NAME: crm
-      CRM_DB_USER: crm_user
-      CRM_DB_PASSWORD: crm_password
       TELEMETRY_DB_HOST: telemetry_db
       TELEMETRY_DB_PORT: "5432"
       TELEMETRY_DB_NAME: telemetry

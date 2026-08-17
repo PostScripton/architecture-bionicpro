@@ -12,6 +12,13 @@ CREATE TABLE IF NOT EXISTS customers (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- REPLICA IDENTITY FULL нужен Debezium (см. Задание 4): при DEFAULT
+-- события DELETE логической репликации содержат только PK (id), а
+-- витрина в ClickHouse матчит строки customers по username - без полного
+-- набора старых значений строку с удалённым клиентом было бы невозможно
+-- корректно пометить как удалённую.
+ALTER TABLE customers REPLICA IDENTITY FULL;
+
 INSERT INTO customers (username, full_name, region, prosthetic_model, prosthetic_active, contract_signed_at) VALUES
     ('prothetic1', 'Prothetic One', 'Moscow', 'BionicArm X1', TRUE, '2025-01-15'),
     ('prothetic2', 'Prothetic Two', 'Saint Petersburg', 'BionicArm X1', TRUE, '2025-02-20'),

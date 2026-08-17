@@ -10,10 +10,12 @@
 
 Код ETL вынесен в отдельную папку [`airflow/`](../airflow):
 
-- `airflow/dags/reports_etl_dag.py` - DAG `crm_telemetry_reports_etl` с тремя задачами: `extract_crm` (активные клиенты с протезом), `extract_telemetry` (агрегация событий протеза за обрабатываемые сутки: количество событий, среднее время отклика, среднее качество сигнала, средний заряд батареи, число ошибок), `build_and_load_mart` (объединение по `username` и загрузка строк в ClickHouse).
+- `airflow/dags/reports_etl_dag.py` - DAG `crm_telemetry_reports_etl` с задачами `extract_telemetry` (агрегация событий протеза за обрабатываемые сутки: количество событий, среднее время отклика, среднее качество сигнала, средний заряд батареи, число ошибок) и `load_telemetry_agg` (загрузка агрегатов в ClickHouse).
 - Соединения с источниками и ClickHouse настроены через переменные окружения контейнеров, а не через Airflow Connections UI - DAG работает сразу после `docker-compose up`, без ручной настройки.
 - Расписание - `0 3 * * *` (ежедневно в 03:00), `catchup=False`. Обрабатываются данные за завершённые сутки (`{{ ds }}`), поэтому пользователь не может получить отчёт за период, который ещё не прошёл через ETL - витрина просто не содержит такой даты, и `reports-api` в этом случае возвращает статус "отчёт не готов".
-- Схема витрины - [`clickhouse/init/01_reports_mart.sql`](../clickhouse/init/01_reports_mart.sql), таблица `reports.user_report_mart` (`ReplacingMergeTree`, `ORDER BY (username, report_date)`) - подобрана под быстрый поиск по конкретному пользователю.
+- Схема витрины - [`clickhouse/init/01_reports_mart.sql`](../clickhouse/init/01_reports_mart.sql), таблица `reports.user_report_mart_v2` (`ReplacingMergeTree`, `ORDER BY (username, report_date)`) - подобрана под быстрый поиск по конкретному пользователю.
+
+В [Задании 4](../Task4) данные CRM в этой схеме заменены на приём через CDC (Debezium -> Kafka -> ClickHouse), чтобы массовая выгрузка клиентов не нагружала транзакционную БД CRM - Airflow здесь описывает только агрегацию телеметрии.
 
 ## Сервис reports-api
 
