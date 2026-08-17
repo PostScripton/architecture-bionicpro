@@ -41,3 +41,22 @@
 - Запрос этого `report_url` напрямую отдаёт `X-Cache-Status: MISS` на первый заход и `HIT` на повторный - Nginx отдаёт закешированную копию, не обращаясь к Minio.
 - Повторный `GET /reports` в `reports-api` для того же пользователя выполняет только `HEAD` в S3 и сразу возвращает ту же ссылку - обращения к ClickHouse не происходит.
 - Пользователь без данных за вчерашний день по-прежнему получает `202 pending`, без токена - `401`.
+
+## Как проверить самостоятельно
+
+```bash
+docker compose up -d minio minio-init nginx-cdn clickhouse reports-api bionicpro-auth frontend
+```
+
+Сервисы: Minio API - http://localhost:9002, Minio Console - http://localhost:9003 (логин/пароль `minioadmin` / `minioadmin`), Nginx-CDN - http://localhost:8082.
+
+Убедитесь, что бакет создан и открыт на чтение: в Minio Console зайдите в бакет `reports` (после того как хотя бы раз был запрошен отчёт - см. [Задание 2](../Task2) с примерами логина/паролей тестовых пользователей).
+
+Проверка кеша CDN на конкретном объекте (подставьте реальные `username`/`report_date` из ответа `reports-api` или из вывода `mc ls local/reports --recursive` внутри контейнера `minio`):
+
+```bash
+curl -i http://localhost:8082/reports/prothetic1/2026-08-16.json   # первый раз -> X-Cache-Status: MISS
+curl -i http://localhost:8082/reports/prothetic1/2026-08-16.json   # второй раз -> X-Cache-Status: HIT
+```
+
+Проверка, что повторный вызов `/reports` не обращается к ClickHouse: остановите `clickhouse` (`docker compose stop clickhouse`) после того, как отчёт для пользователя уже один раз был сформирован - повторный `GET /reports` через `bionicpro-auth` (см. пример с cookie в [Задании 2](../Task2)) всё равно должен вернуть `200` с той же CDN-ссылкой, так как `reports-api` найдёт объект в S3 через `HEAD` и не пойдёт в ClickHouse.

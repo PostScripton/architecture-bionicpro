@@ -37,8 +37,8 @@
 
 ## MFA
 
-- Включена политика TOTP на уровне realm, всем пользователям назначено обязательное действие `CONFIGURE_TOTP` при первом входе.
-- После настройки одноразового пароля стандартный browser flow Keycloak требует его ввод при каждом входе (проверено: попытка входа без настроенного OTP редиректит на `login-actions/required-action?execution=CONFIGURE_TOTP`).
+- Включена политика TOTP на уровне realm. Требуемое действие `CONFIGURE_TOTP` настроено как `defaultAction: true` в top-level `requiredActions` realm'а (`keycloak/realm-export.json`, `keycloak/keycloak-results-export.json`) - это единственный способ сделать OTP обязательным одинаково для всех пользователей независимо от способа создания учётной записи: локальных, синхронизированных из LDAP-федерации и созданных через Identity Brokering (Yandex ID). Изначально `CONFIGURE_TOTP` был прописан вручную только в `requiredActions` шести тестовых пользователей - при первой проверке выяснилось, что LDAP-пользователи (`john.doe`, `jane.smith`, `alex.johnson`) при этом могли войти без OTP, поэтому обязательность вынесена на уровень realm.
+- После настройки одноразового пароля стандартный browser flow Keycloak (подфлоу "Browser - Conditional OTP") требует его ввод при каждом входе (проверено: попытка входа без настроенного OTP редиректит на `login-actions/required-action?execution=CONFIGURE_TOTP`).
 
 ## Яндекс ID
 
@@ -62,7 +62,40 @@
 - LDAP full sync успешно импортирует пользователей с ролями (`0 failed`).
 - Полный цикл PKCE + BFF: `GET /auth/login` -> форма логина Keycloak -> POST credentials -> редирект на фронтенд с session cookie -> `GET /reports` с cookie возвращает 200 и подтверждает ротацию session id на каждом запросе -> `POST /auth/logout` инвалидирует сессию (последующий `GET /auth/session` возвращает 401).
 - `accessTokenLifespan` в realm равен 120 секундам, `revokeRefreshToken` включён.
-- Для пользователя без настроенного OTP при логине запрашивается обязательная настройка TOTP.
+- Для пользователя без настроенного OTP при логине запрашивается обязательная настройка TOTP - в том числе для пользователей, синхронизированных из LDAP (проверено через `requiredActions` в ответе Admin REST API после full sync, см. ниже).
 - Кастомный identity-провайдер `yandex-idp` собирается без ошибок, Keycloak при старте регистрирует его (`KC-SERVICES0047: yandex ... YandexIdentityProviderFactory`), и полный вход через Yandex ID пройден вручную от кнопки на форме логина до возврата в приложение с активной сессией.
 
 Итоговый realm после всех манипуляций экспортирован в [`keycloak/keycloak-results-export.json`](../keycloak/keycloak-results-export.json).
+
+## Как проверить самостоятельно
+
+Перед первым запуском для чистого импорта realm убедитесь, что каталог `postgres-keycloak-data/` (данные БД Keycloak) пуст - если запускали стек раньше, удалите его: `rm -rf postgres-keycloak-data`.
+
+```bash
+docker compose up -d keycloak_db ldap keycloak bionicpro-auth frontend
+```
+
+Дождитесь в логах `docker compose logs -f keycloak` строки `Realm 'reports-realm' imported` (не "already exists, skipped" - это признак, что импорт реально произошёл).
+
+Сервисы после старта:
+
+- Frontend: http://localhost:3000
+- bionicpro-auth (BFF): http://localhost:8000
+- Keycloak: http://localhost:8080, admin-консоль - логин `admin` / пароль `admin`
+- LDAP: `ldap://localhost:389`, bind DN `cn=admin,dc=example,dc=com`, пароль `admin`
+
+Тестовые пользователи realm (`keycloak/realm-export.json`):
+
+- `prothetic1` / `prothetic123`, `prothetic2` / `prothetic123`, `prothetic3` / `prothetic123` - роль `prothetic_user`, есть доступ к отчётам.
+- `user1` / `password123`, `user2` / `password123` - роль `user`, без доступа к отчётам.
+- `admin1` / `admin123` - роль `administrator`.
+
+Пользователи LDAP-представительства (`ldap/config.ldif`, пароль у всех `password`): `john.doe`, `jane.smith`, `alex.johnson`. Чтобы они появились в Keycloak, синхронизируйте LDAP-провайдер: Admin-консоль -> User federation -> `bionicpro-ldap-foreign-office` -> Sync all users (или `POST /admin/realms/reports-realm/user-storage/a1a1a1a1-0001-0001-0001-000000000001/sync?action=triggerFullSync` с admin-токеном).
+
+Проверка PKCE + сессии:
+
+1. Откройте http://localhost:3000, нажмите вход - должно произойти перенаправление на `http://localhost:8000/auth/login`, а затем на форму логина Keycloak с параметрами `code_challenge` и `code_challenge_method=S256` в URL.
+2. Войдите любым тестовым пользователем. При первом входе Keycloak обязательно попросит настроить OTP (отсканировать QR в Google Authenticator/FreeOTP) - это относится и к пользователям LDAP, и к пользователям, вошедшим через Yandex ID.
+3. После входа в браузере должна появиться cookie `bionicpro_session` (HttpOnly) - её видно в DevTools -> Application -> Cookies, но не в `document.cookie` из консоли браузера (HttpOnly).
+4. `GET /reports` без cookie (например, `curl -i http://localhost:8000/reports`) должен вернуть `401`.
+5. Кнопка "Yandex ID" на форме логина Keycloak должна вести на `oauth.yandex.ru/authorize` (нужен реальный аккаунт Яндекса, чтобы пройти сценарий целиком, включая экран согласия и Review Profile).

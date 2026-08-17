@@ -29,3 +29,31 @@
 - `UPDATE customers SET region = ... WHERE username = 'prothetic1'` в `crm_db` без дополнительных действий отражается в `reports.crm_customers FINAL` - новое значение `region` появляется в течение нескольких секунд.
 - `DELETE FROM customers WHERE username = 'prothetic3'` помечает соответствующую строку `is_deleted = 1` в `reports.crm_customers FINAL`; такой клиент перестаёт попадать в `JOIN` витрины и в саму витрину.
 - `airflow dags test crm_telemetry_reports_etl <дата>` агрегирует телеметрию из `telemetry_db`, пишет строки в `reports.telemetry_daily_agg`, `MaterializedView` строит по ним `reports.user_report_mart_v2` с актуальными на момент вставки данными CRM (включая обновлённый `region` и без удалённого клиента) - без единого `SELECT` к `crm_db` со стороны Airflow.
+
+## Как проверить самостоятельно
+
+```bash
+docker compose up -d crm_db telemetry_db clickhouse kafka kafka-connect kafka-connect-init
+```
+
+Дождитесь, пока коннектор зарегистрируется и перейдёт в `RUNNING` (Kafka Connect REST - http://localhost:8083):
+
+```bash
+curl -s http://localhost:8083/connectors/crm-customers-connector/status
+```
+
+Проверьте, что снапшот дошёл до ClickHouse (ClickHouse HTTP - http://localhost:8123):
+
+```bash
+curl -s "http://localhost:8123/?query=SELECT+username,region,is_deleted+FROM+reports.crm_customers+FINAL+FORMAT+PrettyCompact"
+```
+
+Проверьте, что изменения в CRM доходят до витрины без прямых запросов Airflow к `crm_db` (порт `crm_db` наружу - `5434`, пользователь/БД `crm_user`/`crm`, пароль `crm_password`):
+
+```bash
+psql -h localhost -p 5434 -U crm_user -d crm -c "UPDATE customers SET region = 'Novosibirsk' WHERE username = 'prothetic1';"
+sleep 5
+curl -s "http://localhost:8123/?query=SELECT+region+FROM+reports.crm_customers+FINAL+WHERE+username='prothetic1'+FORMAT+PrettyCompact"
+```
+
+Новое значение `region` должно появиться в ClickHouse за несколько секунд без каких-либо действий со стороны Airflow. Аналогично можно проверить `DELETE FROM customers WHERE username = 'prothetic3';` - строка должна получить `is_deleted = 1` и пропасть из `reports.user_report_mart_v2` после следующего прогона Airflow (см. [Задание 2](../Task2) для команды запуска DAG).

@@ -42,3 +42,30 @@
 - `GET /reports` с валидным токеном `prothetic_user` возвращает `200` и отчёт по своему username; без токена - `401`; с ролью `user` (нет протеза) - `403`; для периода, ещё не обработанного Airflow, - `202` вместо ошибки.
 - Полный цикл в браузере: вход через PKCE (Keycloak) -> `bionicpro-auth` устанавливает сессию -> кнопка "Download Report" -> `bionicpro-auth` проксирует запрос в `reports-api` с access-токеном -> ClickHouse -> отчёт отображается в UI.
 - Обнаруженная и исправленная в процессе проверки деталь: `iss` в access-токене после реального authorization code flow соответствует публичному URL Keycloak (тому, с которого браузер начал вход), а не внутреннему адресу, используемому для обмена кода на токен - поэтому в `reports-api` issuer для проверки токена и адрес для получения JWKS настроены раздельно (`KEYCLOAK_PUBLIC_URL` и `KEYCLOAK_INTERNAL_URL`).
+
+## Как проверить самостоятельно
+
+```bash
+docker compose up -d clickhouse crm_db telemetry_db airflow-init airflow-webserver airflow-scheduler bionicpro-auth reports-api frontend
+```
+
+Сервисы: Airflow UI - http://localhost:8081 (логин `admin` / пароль `admin`), reports-api напрямую - http://localhost:8001, ClickHouse HTTP - http://localhost:8123.
+
+Запустить DAG вручную, не дожидаясь расписания 03:00 (дата - вчера относительно текущей, т.к. DAG обрабатывает только завершённые сутки):
+
+```bash
+docker compose exec airflow-webserver airflow dags test crm_telemetry_reports_etl $(date -v-1d +%F)
+```
+
+Проверить, что витрина наполнилась (пользователи с активным протезом - `prothetic1`, `prothetic2`, `prothetic3`, `john.doe`, `alex.johnson`, см. [`crm/init.sql`](../crm/init.sql)):
+
+```bash
+curl -s "http://localhost:8123/?query=SELECT+username,report_date,events_count+FROM+reports.user_report_mart_v2+FORMAT+PrettyCompact"
+```
+
+Проверить API:
+
+1. Без cookie: `curl -i http://localhost:8000/reports` -> `401`.
+2. Войдите на http://localhost:3000 под `prothetic1` / `prothetic123` (пройдите настройку OTP при первом входе, см. [Задание 1](../Task1)), нажмите "Download Report" - отчёт должен отрисоваться в UI. Значение cookie `bionicpro_session` можно взять из DevTools -> Application -> Cookies и повторить запрос из терминала: `curl -i --cookie "bionicpro_session=<значение>" http://localhost:8000/reports`.
+3. Войдите под `user1` / `password123` (роль `user`, без `prothetic_user`) и нажмите "Download Report" - должен вернуться `403`.
+4. Если DAG ещё не запускали или отчёта за сегодняшнюю дату ещё нет - `reports-api` должен вернуть `202` со статусом `pending`, а не ошибку.
