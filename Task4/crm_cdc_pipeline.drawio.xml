@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" version="24.8.4">
+  <diagram name="CRM CDC Pipeline" id="crm-cdc-pipeline-1">
+    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1050" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- CRM DB -->
+        <mxCell id="crmdb" value="crm_db&#10;[Container: PostgreSQL]&#10;wal_level=logical,&#10;таблица customers,&#10;REPLICA IDENTITY FULL" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#6C6477;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#4D4D4D;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Debezium -->
+        <mxCell id="debezium" value="kafka-connect&#10;[Container: Debezium PostgreSQL Connector]&#10;Читает WAL через логическую&#10;репликацию - без запросов к CRM.&#10;Публикует изменения customers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="40" width="280" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Kafka -->
+        <mxCell id="kafka" value="kafka&#10;[Container: Apache Kafka, KRaft]&#10;Топик crm.public.customers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23A2D9;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0E7DAD;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="720" y="60" width="240" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- ClickHouse Kafka engine queue -->
+        <mxCell id="queue" value="reports.crm_customers_queue&#10;[Table: ClickHouse, Kafka Engine]&#10;Читает топик как поток строк" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="40" width="280" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- crm_customers -->
+        <mxCell id="crmcustomers" value="reports.crm_customers&#10;[Table: ClickHouse, ReplacingMergeTree]&#10;Зеркало CRM: последнее состояние&#10;строки по username, is_deleted" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#23A2D9;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#0E7DAD;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="220" width="280" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Telemetry DB -->
+        <mxCell id="telemetrydb" value="telemetry_db&#10;[Container: PostgreSQL]&#10;Сырые события протеза&#10;(device_events)" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#6C6477;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#4D4D4D;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="240" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Airflow -->
+        <mxCell id="airflow" value="Airflow&#10;[Container: DAG crm_telemetry_reports_etl]&#10;extract_telemetry -&gt; агрегация за сутки&#10;load_telemetry_agg -&gt; загрузка в ClickHouse.&#10;CRM больше не запрашивается (Задание 4)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="400" width="320" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- telemetry_daily_agg -->
+        <mxCell id="telemetryagg" value="reports.telemetry_daily_agg&#10;[Table: ClickHouse, ReplacingMergeTree]&#10;Агрегаты телеметрии за сутки&#10;по username" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#23A2D9;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#0E7DAD;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="420" width="280" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- MV -->
+        <mxCell id="mv" value="reports.user_report_mart_mv&#10;[MaterializedView: ClickHouse]&#10;На insert в telemetry_daily_agg&#10;JOIN с актуальными crm_customers&#10;(is_deleted=0, prosthetic_active=1)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="620" width="280" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- final mart -->
+        <mxCell id="mart" value="reports.user_report_mart_v2&#10;[Table: ClickHouse, ReplacingMergeTree]&#10;Готовая витрина отчётности" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#23A2D9;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#0E7DAD;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="820" width="280" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- reports-api -->
+        <mxCell id="reportsapi" value="reports-api&#10;[Container: Python / FastAPI]&#10;SELECT ... FROM user_report_mart_v2&#10;(Задание 2, 3)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="840" width="240" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <mxCell id="e1" value="логическая репликация (WAL)&#10;без SELECT к таблице" style="html=1;fontSize=10;endArrow=block;strokeColor=#4D4D4D;fontColor=#4D4D4D;" edge="1" parent="1" source="crmdb" target="debezium">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e2" value="produce&#10;(insert/update/delete)" style="html=1;fontSize=10;endArrow=block;strokeColor=#0D5091;fontColor=#0D5091;" edge="1" parent="1" source="debezium" target="kafka">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3" value="consume" style="html=1;fontSize=10;endArrow=block;strokeColor=#0E7DAD;fontColor=#0E7DAD;" edge="1" parent="1" source="kafka" target="queue">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e4" value="MV crm_customers_mv&#10;(на каждый блок сообщений)" style="html=1;fontSize=10;endArrow=block;strokeColor=#0D5091;fontColor=#0D5091;" edge="1" parent="1" source="queue" target="crmcustomers">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e5" value="SELECT агрегатов за&#10;завершённые сутки" style="html=1;fontSize=10;endArrow=block;strokeColor=#4D4D4D;fontColor=#4D4D4D;" edge="1" parent="1" source="telemetrydb" target="airflow">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e6" value="INSERT агрегатов" style="html=1;fontSize=10;endArrow=block;strokeColor=#0D5091;fontColor=#0D5091;" edge="1" parent="1" source="airflow" target="telemetryagg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e7" value="триггерит MV" style="html=1;fontSize=10;endArrow=block;strokeColor=#0E7DAD;fontColor=#0E7DAD;" edge="1" parent="1" source="telemetryagg" target="mv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e8" value="JOIN (актуальные данные&#10;клиента на момент вставки)" style="html=1;fontSize=10;endArrow=block;dashed=1;strokeColor=#0E7DAD;fontColor=#0E7DAD;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.85;entryDx=0;entryDy=0;" edge="1" parent="1" source="mv" target="crmcustomers">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="980" y="690" />
+              <mxPoint x="980" y="330" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e9" value="INSERT готовой строки" style="html=1;fontSize=10;endArrow=block;strokeColor=#0D5091;fontColor=#0D5091;" edge="1" parent="1" source="mv" target="mart">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e10" value="SELECT ... FINAL&#10;WHERE username, report_date" style="html=1;fontSize=10;endArrow=block;strokeColor=#4D4D4D;fontColor=#4D4D4D;" edge="1" parent="1" source="mart" target="reportsapi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

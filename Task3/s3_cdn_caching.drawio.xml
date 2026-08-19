@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" version="24.8.4">
+  <diagram name="S3 CDN Caching" id="s3-cdn-caching-1">
+    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Person -->
+        <mxCell id="person" value="Пилот протеза&#10;[Person]" style="html=1;fontSize=11;whiteSpace=wrap;fillColor=#6C6477;strokeColor=#4D4D4D;fontColor=#ffffff;shape=mxgraph.c4.person2;align=center;points=[[0.5,0,0],[1,0.5,0],[1,0.75,0],[0.75,1,0],[0.5,1,0],[0.25,1,0],[0,0.75,0],[0,0.5,0]];" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="150" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Frontend -->
+        <mxCell id="frontend" value="Frontend&#10;[Container: React SPA]&#10;Получает report_url,&#10;отдельно запрашивает CDN" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23A2D9;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0E7DAD;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="220" width="220" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- bionicpro-auth -->
+        <mxCell id="auth" value="bionicpro-auth&#10;[Container: Go BFF]&#10;Проксирует /reports без&#10;изменений (Задание 1)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="220" width="240" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- reports-api -->
+        <mxCell id="reportsapi" value="reports-api&#10;[Container: Python / FastAPI]&#10;Ключ S3 = username/report_date -&#10;вычисляется без обращения к БД.&#10;HEAD в S3, при промахе -&#10;SELECT из витрины и PUT в S3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="420" width="260" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- ClickHouse mart -->
+        <mxCell id="clickhouse" value="user_report_mart&#10;[Container: ClickHouse OLAP]&#10;Только при промахе кеша -&#10;не более 1 SELECT на дату&#10;и пользователя (Задание 2)" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#23A2D9;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#0E7DAD;" vertex="1" parent="1">
+          <mxGeometry x="340" y="660" width="260" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Minio S3 -->
+        <mxCell id="s3" value="Minio&#10;[Container: S3 Object Storage]&#10;Бакет reports,&#10;ключ &lt;username&gt;/&lt;report_date&gt;.json,&#10;anonymous download policy" style="shape=cylinder3;size=15;whiteSpace=wrap;html=1;fillColor=#6C6477;fontSize=11;fontColor=#ffffff;align=center;strokeColor=#4D4D4D;" vertex="1" parent="1">
+          <mxGeometry x="700" y="420" width="260" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Nginx CDN -->
+        <mxCell id="nginx" value="Nginx CDN&#10;[Container: Reverse Proxy]&#10;proxy_cache перед Minio,&#10;отдаёт объекты бакета reports&#10;напрямую браузеру" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="700" y="660" width="260" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <mxCell id="e1" value="запрашивает отчёт" style="html=1;fontSize=10;endArrow=block;strokeColor=#4D4D4D;fontColor=#4D4D4D;" edge="1" parent="1" source="person" target="frontend">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e2" value="GET /reports&#10;(session cookie)" style="html=1;fontSize=10;endArrow=block;strokeColor=#0D5091;fontColor=#0D5091;" edge="1" parent="1" source="frontend" target="auth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3" value="GET /reports&#10;Authorization: Bearer" style="html=1;fontSize=10;endArrow=block;strokeColor=#0D5091;fontColor=#0D5091;" edge="1" parent="1" source="auth" target="reportsapi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e4" value="ответ: report_url&#10;(ссылка на CDN)" style="html=1;fontSize=10;endArrow=block;dashed=1;strokeColor=#0D5091;fontColor=#0D5091;exitX=0.15;exitY=0;exitDx=0;exitDy=0;" edge="1" parent="1" source="reportsapi" target="frontend">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="379" y="170" />
+              <mxPoint x="150" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e5" value="HEAD/PUT object&#10;&lt;username&gt;/&lt;report_date&gt;.json" style="html=1;fontSize=10;endArrow=block;strokeColor=#4D4D4D;fontColor=#4D4D4D;" edge="1" parent="1" source="reportsapi" target="s3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e6" value="SELECT ... WHERE username, report_date&#10;(только если объекта нет в S3)" style="html=1;fontSize=10;endArrow=block;strokeColor=#0E7DAD;fontColor=#0E7DAD;" edge="1" parent="1" source="reportsapi" target="clickhouse">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e7" value="GET &lt;username&gt;/&lt;report_date&gt;.json напрямую, без Authorization" style="html=1;fontSize=10;endArrow=block;strokeColor=#4D4D4D;fontColor=#4D4D4D;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="frontend" target="nginx">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="150" y="860" />
+              <mxPoint x="830" y="860" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="e8" value="proxy_pass + proxy_cache&#10;(HIT - без обращения к Minio)" style="html=1;fontSize=10;endArrow=block;strokeColor=#4D4D4D;fontColor=#4D4D4D;" edge="1" parent="1" source="nginx" target="s3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
